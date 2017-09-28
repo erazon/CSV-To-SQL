@@ -1,0 +1,199 @@
+program CSVtoSQL;
+
+{$mode objfpc}{$H+}
+
+uses
+  {$IFDEF UNIX}{$IFDEF UseCThreads}
+  cthreads,
+  {$ENDIF}{$ENDIF}
+  Classes, SysUtils, CustApp, sqlite3conn, sqldb, db;
+
+type
+
+  { TCSVtoSQL }
+
+  TCSVtoSQL = class(TCustomApplication)
+  protected
+    procedure DoRun; override;
+  public
+    constructor Create(TheOwner: TComponent); override;
+    destructor Destroy; override;
+  end;
+
+{ TCSVtoSQL }
+
+function CreateQuery(pConnection: TSQLConnector; pTransaction: TSQLTransaction): TSQLQuery;
+begin
+  result := TSQLQuery.Create(nil);
+  result.Database := pConnection;
+  result.Transaction := pTransaction
+end;
+
+function CreateTransaction(pConnection: TSQLConnector): TSQLTransaction;
+begin
+  result := TSQLTransaction.Create(pConnection);
+  result.Database := pConnection;
+end;
+
+procedure Split (const Delimiter: Char; Input: string; const Strings: TStrings);
+begin
+   Assert(Assigned(Strings)) ;
+   Strings.Clear;
+   Strings.StrictDelimiter := true;
+   Strings.Delimiter := Delimiter;
+   Strings.DelimitedText := Input;
+end;
+
+procedure TCSVtoSQL.DoRun;
+var
+  ColumnA, Fields, FileContent: TStringList;
+  Conn: TSQLConnector;
+  FileName: string;
+  idx, idy, parent, SectID: integer;
+  Query1, Query2: TSQLQuery;
+  Trans: TSQLTransaction;
+
+begin
+  FileName := 'CatergoriesAndActivities.csv';
+  Conn := TSQLConnector.Create(nil);
+
+  with Conn do begin
+      ConnectorType := 'SQLite3';
+      HostName := ''; // not important
+      DatabaseName := 'geobjects.db';
+      UserName := ''; // not important
+      Password := ''; // not important
+  end;
+  Writeln;
+
+  FileContent := TStringList.Create;
+  try
+    FileContent.LoadFromFile(FileName);
+    Trans := CreateTransaction(Conn);
+    Query1 := CreateQuery(Conn, Trans);
+    Query2 := CreateQuery(Conn, Trans);
+    Conn.Open;
+
+    for idx := 0 to pred(FileContent.Count) do begin
+      Fields := TStringList.Create;
+      try
+        split(',', FileContent.Strings[idx], Fields);
+
+        // inserting into SheetsTbl
+        ColumnA := TStringList.Create;
+        split('s', Fields[0], ColumnA);
+        if ColumnA.Count = 2 then begin
+          Query1.SQL.Text := 'SELECT * FROM SheetsTbl WHERE sheetnum=:sheetnum AND tablenum=:tablenum;';
+          Query1.Params.ParamByName('tablenum').AsString := ColumnA[0][Length(ColumnA[0])];
+          Query1.Params.ParamByName('sheetnum').AsString := ColumnA[1];
+          Query1.Open;
+          Writeln('Sheet Count: ' + IntToStr(Query1.RecordCount));
+          if Query1.RecordCount = 0 then begin
+            Query2.SQL.Text := 'INSERT INTO SheetsTbl(datem,creator,changer,setname,sheetnum,tablenum,notes) VALUES(CURRENT_TIMESTAMP,0,0,0,:sheetnum,:tablenum,"");';
+            Query2.Params.ParamByName('tablenum').AsString := ColumnA[0][Length(ColumnA[0])];
+            Query2.Params.ParamByName('sheetnum').AsString := ColumnA[1];
+            Query2.ExecSQL;
+            Trans.Commit;
+            Query2.Close;
+            Query2.Free;
+          end;
+          Query1.Close;
+        end;
+        ColumnA.Free;
+
+        // inserting into CategoriesTbl
+        Query1.SQL.Text := 'SELECT ID FROM SectorsTbl WHERE sectname=:sname;';
+        Query1.Params.ParamByName('sname').AsString := Fields[1];
+        Query1.Open;
+        SectID := Query1.FieldByName('ID').AsInteger;
+        Query1.Close;
+
+        for idy := 2 to pred(Fields.Count) do begin
+          Writeln('Count Character:' + IntToStr(Fields[idy].Length));
+          if Fields[idy].Length = 0 then begin
+            Break;
+          end;
+
+          Query1.SQL.Text := 'SELECT * FROM CategoriesTbl WHERE catname=:catname;';
+          Query1.Params.ParamByName('catname').AsString := Fields[idy];
+          Query1.Open;
+          if Query1.RecordCount = 0 then begin
+            Query1.Close;
+            if idy = 2 then
+              begin
+                parent := 0;
+              end
+            else
+              begin
+                Query1.SQL.Text := 'SELECT * FROM CategoriesTbl WHERE catname=:catname;';
+                Query1.Params.ParamByName('catname').AsString := Fields[idy-1];
+                Query1.Open;
+                parent := Query1.FieldByName('ID').AsInteger;
+                Query1.Close;
+              end;
+
+            Query2.SQL.Text := 'INSERT INTO CategoriesTbl(datem,creator,changer,setname,catname,sect,parent,ismemo,catval,displace,notes) VALUES(CURRENT_TIMESTAMP,0,0,0,:catname,:sect,:parent,"n",0,:displace,"");';
+            Query2.Params.ParamByName('catname').AsString := Fields[idy];
+            Query2.Params.ParamByName('sect').AsInteger := SectID;
+            Query2.Params.ParamByName('parent').AsInteger := parent;
+            Query2.Params.ParamByName('displace').AsInteger := idy-1;
+            Query2.ExecSQL;
+            Trans.Commit;
+            Query2.Close;
+          end;
+          Query1.Close;
+          Writeln('Column: ' + IntToStr(idy));
+        end;
+
+      finally
+        Fields.Free;
+      end;
+      Writeln('Row: ' + IntToStr(idx));
+    end;
+
+  finally
+    FileContent.Free;
+    Query1.Free;
+    Query2.Free;
+  end;
+
+  // selecting data
+  {Query1.SQL.Text := 'SELECT * FROM testtbl;';
+  Query1.Open;
+  Writeln(Query1.RecordCount);
+  while not Query1.Eof do
+  begin
+    Writeln('ID: ', Query1.FieldByName('ID').AsInteger);
+    Query1.Next;
+  end;}
+
+  Conn.Close;
+  Trans.Free;
+  Conn.Free;
+
+  readln;
+
+  // stop program loop
+  Terminate;
+end;
+
+constructor TCSVtoSQL.Create(TheOwner: TComponent);
+begin
+  inherited Create(TheOwner);
+  StopOnException:=True;
+end;
+
+destructor TCSVtoSQL.Destroy;
+begin
+  inherited Destroy;
+end;
+
+var
+  Application: TCSVtoSQL;
+begin
+  Application:=TCSVtoSQL.Create(nil);
+  Application.Title:='CSV to SQL';
+  Application.Run;
+  Application.Free;
+end.
+

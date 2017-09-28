@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="10"/>
+    <BuildModes Active="Default"/>
+    <Units Count="2">
+      <Unit0>
+        <Filename Value="CSVtoSQL.pas"/>
+        <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
+        <TopLine Value="34"/>
+        <CursorPos X="53" Y="9"/>
+        <UsageCount Value="20"/>
+        <Loaded Value="True"/>
+      </Unit0>
+      <Unit1>
+        <Filename Value="C:\lazarus\fpc\3.0.2\source\packages\fcl-db\src\sqldb\sqldb.pp"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="298"/>
+        <CursorPos X="3" Y="311"/>
+        <UsageCount Value="10"/>
+      </Unit1>
+    </Units>
+    <JumpHistory Count="1">
+      <Position1>
+        <Filename Value="CSVtoSQL.pas"/>
+        <Caret Line="34" Column="73" TopLine="14"/>
+      </Position1>
+    </JumpHistory>
+  </ProjectSession>
+</CONFIG>
